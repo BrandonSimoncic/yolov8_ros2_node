@@ -1,0 +1,9 @@
+launch:
+  nodes:
+    - name: yolov8_node
+      package: yolov8_ros
+      executable: yolov8_node
+      output: screen
+      parameters:
+        - param1: value1
+        - param2: value2
