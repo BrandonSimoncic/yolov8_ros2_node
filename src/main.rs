@@ -2,7 +2,7 @@ mod yolov8;
 
 mod yolo_model;
 use opencv::prelude::*;
-use opencv::{videoio, Result};
+use opencv::Result;
 
 use rclrs::{create_node, 
     Context, 
@@ -12,7 +12,7 @@ use rclrs::{create_node,
     RclrsError, 
     QOS_PROFILE_DEFAULT,
     ToLogParams};
-use tracing::subscriber;
+// use tracing::subscriber;
 use std::{
     env, 
     sync::{Arc, Mutex}, 
@@ -93,7 +93,7 @@ fn main() -> Result<(), RclrsError> {
         thread::sleep(Duration::from_millis(33));
         let mut left_frame = publisher_other_thread.data.lock().unwrap();
         let image = convert_imagemsg_to_mat(&left_frame.as_ref().unwrap());
-        let yolov8_frame = yolov8::yolov8(&image).unwrap();
+        let yolov8_frame = yolov8::yolo_task(&image).unwrap();
         publisher_other_thread.publish_data(&yolov8_frame).unwrap();
     });
     rclrs::spin(yolov8_node.node.clone())
