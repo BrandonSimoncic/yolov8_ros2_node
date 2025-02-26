@@ -3,6 +3,10 @@ name = "yolov8_ros"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.ros]
+install_to_share = ["launch"]
+
+
 [dependencies]
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.8.3", features = ["cuda"] }
 candle = {package = "candle-core", version = "*"}

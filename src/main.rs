@@ -41,7 +41,7 @@ impl Yolov8Node {
     fn new(context: &Context) -> Result<Self, RclrsError> {
         let node = create_node(context, "yolov8").unwrap();
         let yolov8_publisher = node
-            .create_publisher("left_image", QOS_PROFILE_DEFAULT)
+            .create_publisher("yolov8_image", QOS_PROFILE_DEFAULT)
             .unwrap();
         let data: Arc<Mutex<Option<ImageMsg>>> = Arc::new(Mutex::new(None));
         let data_mut: Arc<Mutex<Option<ImageMsg>>> = Arc::clone(&data);
@@ -85,10 +85,12 @@ fn main() -> Result<(), RclrsError> {
     let subscriber_other_thread = Arc::clone(&yolov8_node);
     let publisher_other_thread = Arc::clone(&yolov8_node);
     
-    // Replace args with 
+    println!("Current exe: {:?}", std::env::current_exe().unwrap());
+    
+    // Replace args with ROS2 Params or Config file
     let cpu = true;
-    let model_str = String::from("yolov8");
-    let which: yolov8::Which = yolov8::Which::L;
+    let model_str = String::from("./launch/yolov8n.safetensors");
+    let which: yolov8::Which = yolov8::Which::N;
     let con_thresh = 0.5;
     let nms = 0.5;
     let legend = 0;
