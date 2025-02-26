@@ -4,6 +4,7 @@ mod yolo_model;
 use opencv::prelude::*;
 use opencv::Result;
 
+
 use rclrs::{create_node, 
     Context, 
     Node, 
@@ -12,6 +13,7 @@ use rclrs::{create_node,
     RclrsError, 
     QOS_PROFILE_DEFAULT,
     ToLogParams};
+use yolo_model::YoloV8;
 // use tracing::subscriber;
 use std::{
     env, 
@@ -82,6 +84,21 @@ fn main() -> Result<(), RclrsError> {
     let log_text = Arc::clone(&yolov8_node);
     let subscriber_other_thread = Arc::clone(&yolov8_node);
     let publisher_other_thread = Arc::clone(&yolov8_node);
+    
+    // Replace args with 
+    let cpu = true;
+    let model_str = String::from("yolov8");
+    let which: yolov8::Which = yolov8::Which::L;
+    let con_thresh = 0.5;
+    let nms = 0.5;
+    let legend = 0;
+
+    let (model, device) = yolov8::load_yolo::<YoloV8>(
+        cpu,
+        model_str, 
+        which)
+        .unwrap();
+
 
     thread::spawn(move || loop {
         thread::sleep(Duration::from_millis(33));
@@ -91,9 +108,16 @@ fn main() -> Result<(), RclrsError> {
     });
     thread::spawn(move || loop {
         thread::sleep(Duration::from_millis(33));
-        let mut left_frame = publisher_other_thread.data.lock().unwrap();
+        let left_frame = publisher_other_thread.data.lock().unwrap();
         let image = convert_imagemsg_to_mat(&left_frame.as_ref().unwrap());
-        let yolov8_frame = yolov8::yolo_task(&image).unwrap();
+        let yolov8_frame = yolov8::run_yolo_live(
+            con_thresh, 
+            nms, 
+            legend, 
+            image, 
+            &model, 
+            &device)
+            .unwrap(); // TODO: This, if I sepereate this will I run into a race condition?
         publisher_other_thread.publish_data(&yolov8_frame).unwrap();
     });
     rclrs::spin(yolov8_node.node.clone())

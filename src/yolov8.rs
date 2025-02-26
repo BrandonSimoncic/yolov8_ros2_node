@@ -14,6 +14,9 @@ use clap::{ValueEnum};
 use clap::Parser;
 use image::DynamicImage;
 
+use opencv::prelude::*;
+use opencv::imgproc;
+use image::{ImageBuffer, Rgb};
 // Keypoints as reported by ChatGPT :)
 // Nose
 // Left Eye
@@ -240,7 +243,7 @@ pub fn report_pose(
 }
 
 #[derive(Clone, Copy, ValueEnum, Debug)]
-enum Which {
+pub enum Which {
     N,
     S,
     M,
@@ -440,6 +443,112 @@ pub fn run<T: Task>(args: Args) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn dynamic_image_to_mat(img: &DynamicImage) -> Result<Mat> {
+    let raw_data = img.to_rgb8().into_raw();
+    let mut mat = Mat::from_slice(&raw_data).unwrap().clone_pointee();
+    let size = mat.size().unwrap();
+    let mut result = Mat::default();
+    let interpolation = 0;
+    imgproc::resize(&mut mat,
+        &mut result,
+         size,
+        0.0,
+        0.0,
+        interpolation);
+    Ok(result)
+}
+fn mat_to_dynamic_image(mat: &Mat) -> Result<DynamicImage> {
+    let size = mat.size().unwrap();
+    let width = size.width;
+    let height = size.height;
+    let data = mat.data_bytes().unwrap().to_vec();
+    let image_buffer = ImageBuffer::<Rgb<u8>, _>::from_raw(
+        width as u32, 
+        height as u32, 
+        data.to_vec())
+        .ok_or(opencv::Error::new(
+            opencv::core::StsError,
+            "Failed to create ImageBuffer"
+        )).unwrap();
+    Ok(DynamicImage::ImageRgb8(image_buffer))
+}
+
+pub fn load_yolo<T: Task>(cpu: bool, model: String, which: Which)-> anyhow::Result<(T, Device)> {
+    let device = candle_examples::device(cpu)?;
+    // Create the model and load the weights from the file.
+    let multiples = match which {
+        Which::N => Multiples::n(),
+        Which::S => Multiples::s(),
+        Which::M => Multiples::m(),
+        Which::L => Multiples::l(),
+        Which::X => Multiples::x(),
+    };
+    let model = model;
+    let vb = unsafe { VarBuilder::from_mmaped_safetensors(
+        &[model], 
+        DType::F32, 
+        &device)?
+     };
+    let model = T::load(vb, multiples)?;
+    println!("model loaded");
+    Ok((model, device))
+}
+
+pub fn run_yolo_live<T: Task>(
+    confidence_threshold: f32, 
+    nms_threshold: f32,
+    legend_size: u32, 
+    image: Mat, 
+    model: &T, 
+    device: &Device ) -> anyhow::Result<Mat> {
+
+    println!("processing image");
+    let original_image = mat_to_dynamic_image(&image).unwrap();
+    let (width, height) = {
+        let w = original_image.width() as usize;
+        let h = original_image.height() as usize;
+        if w < h {
+            let w = w * 640 / h;
+            // Sizes have to be divisible by 32.
+            (w / 32 * 32, 640)
+        } else {
+            let h = h * 640 / w;
+            (640, h / 32 * 32)
+        }
+    };
+    let image_t = {
+        let img = original_image.resize_exact(
+            width as u32,
+            height as u32,
+            image::imageops::FilterType::CatmullRom,
+        );
+        let data = img.to_rgb8().into_raw();
+        Tensor::from_vec(
+            data,
+            (img.height() as usize, img.width() as usize, 3),
+            &device,
+        )?
+        .permute((2, 0, 1))?
+    };
+    let image_t = (image_t.unsqueeze(0)?.to_dtype(DType::F32)? * (1. / 255.))?;
+    let predictions = model.forward(&image_t)?.squeeze(0)?;
+    println!("generated predictions {predictions:?}");
+    let image_t = T::report(
+        &predictions,
+        original_image,
+        width,
+        height,
+        confidence_threshold,
+        nms_threshold,
+        legend_size,
+    )?;
+    println!("writing to image");
+
+    let mat_image = dynamic_image_to_mat(&image_t).unwrap();
+    
+
+    Ok(mat_image)
+}
 pub fn yolo_task() -> anyhow::Result<()> {
     use tracing_chrome::ChromeLayerBuilder;
     use tracing_subscriber::prelude::*;
