@@ -12,10 +12,9 @@ use candle_nn::{Module, VarBuilder};
 use candle_transformers::object_detection::{non_maximum_suppression, Bbox, KeyPoint};
 use clap::{ValueEnum};
 use clap::Parser;
-use image::DynamicImage;
+use image::{DynamicImage, GenericImageView};
 
 use opencv::prelude::*;
-use opencv::imgproc;
 use image::{ImageBuffer, Rgb};
 // Keypoints as reported by ChatGPT :)
 // Nose
@@ -377,85 +376,14 @@ impl Task for YoloV8Pose {
     }
 }
 
-pub fn run<T: Task>(args: Args) -> anyhow::Result<()> {
-    let device = candle_examples::device(args.cpu)?;
-    // Create the model and load the weights from the file.
-    let multiples = match args.which {
-        Which::N => Multiples::n(),
-        Which::S => Multiples::s(),
-        Which::M => Multiples::m(),
-        Which::L => Multiples::l(),
-        Which::X => Multiples::x(),
-    };
-    let model = args.model()?;
-    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[model], DType::F32, &device)? };
-    let model = T::load(vb, multiples)?;
-    println!("model loaded");
-    for image_name in args.images.iter() {
-        println!("processing {image_name}");
-        let mut image_name = std::path::PathBuf::from(image_name);
-        let original_image = image::ImageReader::open(&image_name)?
-            .decode()
-            .map_err(candle::Error::wrap)?;
-        let (width, height) = {
-            let w = original_image.width() as usize;
-            let h = original_image.height() as usize;
-            if w < h {
-                let w = w * 640 / h;
-                // Sizes have to be divisible by 32.
-                (w / 32 * 32, 640)
-            } else {
-                let h = h * 640 / w;
-                (640, h / 32 * 32)
-            }
-        };
-        let image_t = {
-            let img = original_image.resize_exact(
-                width as u32,
-                height as u32,
-                image::imageops::FilterType::CatmullRom,
-            );
-            let data = img.to_rgb8().into_raw();
-            Tensor::from_vec(
-                data,
-                (img.height() as usize, img.width() as usize, 3),
-                &device,
-            )?
-            .permute((2, 0, 1))?
-        };
-        let image_t = (image_t.unsqueeze(0)?.to_dtype(DType::F32)? * (1. / 255.))?;
-        let predictions = model.forward(&image_t)?.squeeze(0)?;
-        println!("generated predictions {predictions:?}");
-        let image_t = T::report(
-            &predictions,
-            original_image,
-            width,
-            height,
-            args.confidence_threshold,
-            args.nms_threshold,
-            args.legend_size,
-        )?;
-        image_name.set_extension("pp.jpg");
-        println!("writing {image_name:?}");
-        image_t.save(image_name)?
-    }
 
-    Ok(())
-}
 
 fn dynamic_image_to_mat(img: &DynamicImage) -> Result<Mat> {
+    let (width, height) = img.dimensions();
     let raw_data = img.to_rgb8().into_raw();
-    let mut mat = Mat::from_slice(&raw_data).unwrap().clone_pointee();
-    let size = mat.size().unwrap();
-    let mut result = Mat::default();
-    let interpolation = 0;
-    imgproc::resize(&mut mat,
-        &mut result,
-         size,
-        0.0,
-        0.0,
-        interpolation);
-    Ok(result)
+    let mat = Mat::from_slice(&raw_data).unwrap();
+    let mat = mat.reshape(3, height as i32).unwrap().clone_pointee();
+    Ok(mat)
 }
 fn mat_to_dynamic_image(mat: &Mat) -> Result<DynamicImage> {
     let size = mat.size().unwrap();
@@ -484,6 +412,7 @@ pub fn load_yolo<T: Task>(cpu: bool, model: String, which: Which)-> anyhow::Resu
         Which::X => Multiples::x(),
     };
     let model = model;
+    
     let vb = unsafe { VarBuilder::from_mmaped_safetensors(
         &[model], 
         DType::F32, 
@@ -548,24 +477,4 @@ pub fn run_yolo_live<T: Task>(
     
 
     Ok(mat_image)
-}
-pub fn yolo_task() -> anyhow::Result<()> {
-    use tracing_chrome::ChromeLayerBuilder;
-    use tracing_subscriber::prelude::*;
-
-    let args = Args::parse();
-
-    let _guard = if args.tracing {
-        let (chrome_layer, guard) = ChromeLayerBuilder::new().build();
-        tracing_subscriber::registry().with(chrome_layer).init();
-        Some(guard)
-    } else {
-        None
-    };
-
-    match args.task {
-        YoloTask::Detect => run::<YoloV8>(args)?,
-        YoloTask::Pose => run::<YoloV8Pose>(args)?,
-    }
-    Ok(())
 }

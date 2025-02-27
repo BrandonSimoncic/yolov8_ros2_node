@@ -85,11 +85,23 @@ fn main() -> Result<(), RclrsError> {
     let subscriber_other_thread = Arc::clone(&yolov8_node);
     let publisher_other_thread = Arc::clone(&yolov8_node);
     
-    println!("Current exe: {:?}", std::env::current_exe().unwrap());
-    
+    let exe_path = env::current_exe().unwrap();
+    println!("Running executable path: {:?}", exe_path);
+
+    // Construct the path to the .safetensors file
+    // TODO: Write the get_package_share_directory function for rclrs
+    let model_path = exe_path
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("share/yolov8_ros/launch/yolov8n.safetensors");
+    println!("Model path: {:?}", model_path);
+
     // Replace args with ROS2 Params or Config file
-    let cpu = true;
-    let model_str = String::from("./launch/yolov8n.safetensors");
+    let cpu = false;
     let which: yolov8::Which = yolov8::Which::N;
     let con_thresh = 0.5;
     let nms = 0.5;
@@ -97,7 +109,7 @@ fn main() -> Result<(), RclrsError> {
 
     let (model, device) = yolov8::load_yolo::<YoloV8>(
         cpu,
-        model_str, 
+        model_path.to_str().unwrap().to_string(), 
         which)
         .unwrap();
 
@@ -105,13 +117,14 @@ fn main() -> Result<(), RclrsError> {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_millis(33));
         
-        log!(log_text.node.info(), "Subcribing to Image");
-        let mut left_frame = subscriber_other_thread.data.lock().unwrap();    
-    });
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_millis(33));
+        
+        // let mut left_frame = subscriber_other_thread.data.lock().unwrap();    
+    // });
+    // thread::spawn(move || loop {
+    //     thread::sleep(Duration::from_millis(33));
         let left_frame = publisher_other_thread.data.lock().unwrap();
         let image = convert_imagemsg_to_mat(&left_frame.as_ref().unwrap());
+        log!(log_text.node.info(), "Image Size: {:?}", &image.size().unwrap());
         let yolov8_frame = yolov8::run_yolo_live(
             con_thresh, 
             nms, 
@@ -120,6 +133,7 @@ fn main() -> Result<(), RclrsError> {
             &model, 
             &device)
             .unwrap(); // TODO: This, if I sepereate this will I run into a race condition?
+        log!(log_text.node.info(), "Output Size: {:?}", &yolov8_frame.size().unwrap());
         publisher_other_thread.publish_data(&yolov8_frame).unwrap();
     });
     rclrs::spin(yolov8_node.node.clone())
