@@ -13,7 +13,7 @@ This is a ROS2 node example for integrating Yolov8 in Rust. **Please note that t
 
 1. Clone this repository:
     ```sh
-    git clone <repository_url>
+    git clone git@github.com:BrandonSimoncic/yolov8_ros2_node.git
     cd yolov8_node
     ```
 
