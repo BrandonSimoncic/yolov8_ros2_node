@@ -116,12 +116,6 @@ fn main() -> Result<(), RclrsError> {
 
     thread::spawn(move || loop {
         thread::sleep(Duration::from_millis(33));
-        
-        
-        // let mut left_frame = subscriber_other_thread.data.lock().unwrap();    
-    // });
-    // thread::spawn(move || loop {
-    //     thread::sleep(Duration::from_millis(33));
         let left_frame = publisher_other_thread.data.lock().unwrap();
         let image = convert_imagemsg_to_mat(&left_frame.as_ref().unwrap());
         log!(log_text.node.info(), "Image Size: {:?}", &image.size().unwrap());

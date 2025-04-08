@@ -1,6 +1,6 @@
 # Yolov8 ROS2 Node
 
-This is a ROS2 node example for integrating Yolov8 in Rust. **Please note that this project is a work in progress.**
+This is a ROS2 node example for integrating Yolov8 in Rust. 
 
 ## Prerequisites
 

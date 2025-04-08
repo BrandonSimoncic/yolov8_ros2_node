@@ -2,7 +2,7 @@
   <name>yolov8_ros</name>
   <version>0.0.0</version>
   <description>A Simple Package in rust for YoloV8 </description>
-  <maintainer email="user@todo.todo">user</maintainer>
+  <maintainer email="brandonsimoncic@gmail.com">user</maintainer>
   <license>TODO: License declaration</license>
   
   <depend>rclrs</depend>
