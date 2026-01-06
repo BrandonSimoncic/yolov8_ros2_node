@@ -379,7 +379,7 @@ impl Task for YoloV8Pose {
 
 
 fn dynamic_image_to_mat(img: &DynamicImage) -> Result<Mat> {
-    let (width, height) = img.dimensions();
+    let (_width, height) = img.dimensions();
     let raw_data = img.to_rgb8().into_raw();
     let mat = Mat::from_slice(&raw_data).unwrap();
     let mat = mat.reshape(3, height as i32).unwrap().clone_pointee();

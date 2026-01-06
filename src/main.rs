@@ -5,18 +5,10 @@ use opencv::prelude::*;
 use opencv::Result;
 
 
-use rclrs::{create_node, 
-    Context, 
-    Node, 
-    Publisher,
-    Subscription,
-    RclrsError, 
-    QOS_PROFILE_DEFAULT,
-    ToLogParams};
+use rclrs::*;
 use yolo_model::YoloV8;
 // use tracing::subscriber;
 use std::{
-    env, 
     sync::{Arc, Mutex}, 
     thread, 
     time::Duration};
@@ -38,22 +30,20 @@ struct Yolov8Node {
     data: Arc<Mutex<Option<ImageMsg>>>,
 }
 impl Yolov8Node {
-    fn new(context: &Context) -> Result<Self, RclrsError> {
-        let node = create_node(context, "yolov8").unwrap();
+    fn new(executor: &Executor) -> Result<Self, RclrsError> {
+        let node = executor.create_node("yolov8")?;
         let yolov8_publisher = node
-            .create_publisher("yolov8_image", QOS_PROFILE_DEFAULT)
-            .unwrap();
+            .create_publisher("yolov8_image")?;
         let data: Arc<Mutex<Option<ImageMsg>>> = Arc::new(Mutex::new(None));
         let data_mut: Arc<Mutex<Option<ImageMsg>>> = Arc::clone(&data);
         let image_sub  = node
         .create_subscription::<ImageMsg, _>(
             "left_image",
-            QOS_PROFILE_DEFAULT,
             move |msg: ImageMsg| {
                 *data_mut.lock().unwrap() = Some(msg);
             },
-        ).unwrap();
-        Ok(Self { node, yolov8_publisher, image_sub, data})
+        )?;
+        Ok(Self { node: node.into(), yolov8_publisher: yolov8_publisher.into(), image_sub: image_sub.into(), data})
     }
 
     fn publish_data(&self, marked_image: &Mat) -> Result<(), RclrsError> {
@@ -79,13 +69,13 @@ impl Yolov8Node {
     }
 }
 fn main() -> Result<(), RclrsError> {
-    let context = Context::new(env::args()).unwrap();
-    let yolov8_node = Arc::new(Yolov8Node::new(&context).unwrap());
+    let mut executor = Context::default_from_env()?.create_basic_executor();
+    let yolov8_node = Arc::new(Yolov8Node::new(&executor)?);
     let log_text = Arc::clone(&yolov8_node);
     let subscriber_other_thread = Arc::clone(&yolov8_node);
     let publisher_other_thread = Arc::clone(&yolov8_node);
     
-    let exe_path = env::current_exe().unwrap();
+    let exe_path = std::env::current_exe().unwrap();
     println!("Running executable path: {:?}", exe_path);
 
     // Construct the path to the .safetensors file
@@ -130,5 +120,5 @@ fn main() -> Result<(), RclrsError> {
         log!(log_text.node.info(), "Output Size: {:?}", &yolov8_frame.size().unwrap());
         publisher_other_thread.publish_data(&yolov8_frame).unwrap();
     });
-    rclrs::spin(yolov8_node.node.clone())
+    executor.spin(SpinOptions::default()).first_error()
 }
