@@ -1,9 +1,15 @@
-launch:
-  nodes:
-    - name: yolov8_node
-      package: yolov8_ros
-      executable: yolov8_node
-      output: screen
-      parameters:
-        - param1: value1
-        - param2: value2
+/**:
+  ros__parameters:
+    # YOLOv8 model configuration
+    cpu: false
+    model_variant: "n"  # Options: "n", "s", "m", "l", "x"
+    confidence_threshold: 0.5
+    nms_threshold: 0.5
+    legend_size: 0
+    
+    # Topic names
+    input_image_topic: "left_image"
+    output_image_topic: "yolov8_image"
+    
+    # Model path (relative to package share directory)
+    model_path: "launch/yolov8n.safetensors"
